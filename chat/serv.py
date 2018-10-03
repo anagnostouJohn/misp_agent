@@ -8,12 +8,17 @@ Created on Thu Sep  6 13:33:05 2018
 
 # Python program to implement server side of chat room.
 import socket
-import ssl
 import os
-from multiprocessing import Process
 import json
-from diffiehellman.diffiehellman import DiffieHellman
 import hashlib
+import string
+import random
+from multiprocessing import Process
+from diffiehellman.diffiehellman import DiffieHellman
+from Crypto.Cipher import AES
+
+
+
 hash_256 = hashlib.sha256()
 alice = DiffieHellman()
 
@@ -23,6 +28,25 @@ CERTFILE = os.getcwd()+'/certs/cert.pem'
 
 Port = 8210
 IP_address = '192.168.1.3'
+
+key = "hello"
+#hex_key = hashlib.sha256(key.encode("utf-8")).digest()
+IV = 16 * b'\x00'
+mode = AES.MODE_CFB
+
+
+
+def cr_encr(hex_key):
+    return AES.new(hex_key, mode, IV=IV)
+
+def id_generator(size, chars=string.ascii_letters + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+def return_sha256(string_to_hex):
+    return hashlib.sha256(string_to_hex.encode("utf-8")).digest()
+
+
+
 def socket_cr():
     try:
         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -46,17 +70,33 @@ class client(Process):
         self.shared = None
        #self.alice.generate_public_key()
 
-    #def df(self):
-    #    m_df = {["alice":self.alice.public_key]}
-    #    self.socet.send(json.dumps(m_df))
-    #    data = self.socet.recv(json.dumps(m_df))
-    #    if data:
-            
-        
-
-
 
     def run(self):
+        self.chap()
+        #self.dh()
+
+
+    def chap(self):
+        file = open("encr_fileserv.txt", "rb")
+        x = file.read()
+
+        encryptor = cr_encr(return_sha256(key))
+        zz = encryptor.decrypt(x)
+
+        zz = zz.decode("utf-8")
+        final = zz.split()
+        print(final[0])
+        challenge = id_generator(10)
+        data = {"challenge":challenge,"hash":return_sha256(final[0]+challenge).hex()}
+        print(data)
+        id_generator(10)
+        send_json = json.dumps(data)
+        print(type(send_json))
+        #print(send_json.encode("utf-8"))
+        #self.socet.send(send_json)
+
+
+    def dh(self):
         alice.generate_public_key()
         print(alice.public_key)
         total_data = ""
@@ -73,7 +113,6 @@ class client(Process):
                     total_data+=message.decode("utf-8")
                     message = ""
                     message = self.socet.recv(2048)
-                    #del message
                 else:
                     break
             except socket.error as ex:
@@ -83,8 +122,7 @@ class client(Process):
             f = json.loads(total_data)
             alice.generate_shared_secret(f["bob"], echo_return_key=True)
             self.shared = alice.shared_key
-
-            print(self.shared)
+            print(">>>>",self.shared)
             print("END")
             #self.join()
             break
@@ -109,7 +147,7 @@ def main(server):
             clients[0].start()
             clients[0].join()
             del clients[0]
-            print (len(clients))
+            print (len(clients),"LENGTH")
             #t1 = Process(target=clientthread, args=(clients[0]))
         except socket.error as e:
             print("Waiting for Connection : ",e)
