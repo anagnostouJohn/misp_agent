@@ -78,8 +78,13 @@ class client(Process):
         #print(time.time())
         #print(self.ip)
         #print(self.port)
-        self.chap()
-        #self.dh()
+        return_of_chap = self.chap()
+        time.sleep(1)
+        if return_of_chap==True:
+            self.dh()
+            print ("END END END ")
+        else:
+            return
 
 
     def decr_file(client_chal,client_hash,db,encryp):
@@ -109,7 +114,12 @@ class client(Process):
         data = {"challenge":challenge,"hash": (hmac.new(str(self.time_con)[:9].encode("utf-8"),((server_encrypt.decode("utf-8")+str(self.time_con)[:9]+challenge).encode("utf-8"))).digest()).hex()}
         send_json = json.dumps(data)
         print(send_json)
-        self.socet.send(send_json.encode("utf-8"))
+        try:
+            self.socet.send(send_json.encode("utf-8"))
+        except socket.error as err :
+            self.socet.close()
+            return False
+            
         data_get = self.socet.recv(1024)
         data_get= json.loads(data_get)
         print("DATA GET",data_get)
@@ -118,15 +128,18 @@ class client(Process):
             list_clients = encryptor.decrypt(bytes.fromhex(i)).decode("ISO-8859-1")
             client_hash = {"hash": (hmac.new(str(self.time_con)[:9].encode("utf-8"),((list_clients+str(self.time_con)[:9]+data_get["challenge"]).encode("utf-8"))).digest()).hex()}
             if client_hash["hash"] == data_get["hash"]:
+                break
                 print("HELLOOOOOO")
-            
+            else:
+                continue
+        return True
             
         #print(data_get)
         
 
     def dh(self):
         alice.generate_public_key()
-        print(alice.public_key)
+        #print(alice.public_key)
         total_data = ""
         print("EDO")
         while True:
@@ -139,19 +152,21 @@ class client(Process):
                     total_data+=message.decode("utf-8")
                     message = ""
                     message = self.socet.recv(2048)
+                    print(">>>>>>>",message)
                 else:
                     break
             except socket.error as ex:
                 print("receive Time out ",ex)
             x = {"alice":alice.public_key}
             self.socet.send(json.dumps(x).encode("utf-8"))
+            print("XXX >> ",total_data," <<<XXX")
             f = json.loads(total_data)
             alice.generate_shared_secret(f["bob"], echo_return_key=True)
             self.shared = alice.shared_key
             print(">>>>",self.shared)
             print("END")
             #self.join()
-            break
+            return 
 
 
 

@@ -59,8 +59,6 @@ def receive(server):
     while True:
         try:
             message = server.recv(2048)
-            #while message is not "":
-            print(message)
             while message:
                 total_data+=message.decode("utf-8")
                 message = ""
@@ -91,26 +89,26 @@ def main(server, c, time_con):
                 server.connect((IP_address, Port))
                 server_chap = server.recv(1024)
                 server_chap = json.loads(server_chap)
-                print("SERVER CHAP", server_chap)
                 server_hash = {"server_hash": (hmac.new(str(time_con)[:9].encode("utf-8"),((server_id.decode("utf-8")+str(time_con)[:9]+server_chap["challenge"]).encode("utf-8"))).digest()).hex()}
-                data = {"challenge":my_challenge,"hash": (hmac.new(str(time_con)[:9].encode("utf-8"),((client_id.decode("utf-8")+str(time_con)[:9]+my_challenge).encode("utf-8"))).digest()).hex()}
-                print(data,"!!!!!!!!")
-                print("!!!!!",server_hash,"!!!!!!!!")
                 if server_hash["server_hash"]==server_chap["hash"]:
+                    time.sleep(1)
+                    data = {"challenge":my_challenge,"hash": (hmac.new(str(time_con)[:9].encode("utf-8"),((client_id.decode("utf-8")+str(time_con)[:9]+my_challenge).encode("utf-8"))).digest()).hex()} 
                     data = json.dumps(data)
                     server.send(data.encode("utf-8"))
-                    print("EDO YEYYYYYYYYYYYYYYYYYYYYYYYy")
+                    x = {"bob": bob.public_key}
+                    c = False                   
+                    total = receive(server)
+                    server.close()
+                    f= json.loads(total)
+                    bob.generate_shared_secret(f["alice"], echo_return_key=True)
+                    print(bob.shared_key)
+                    c=False                                        
                 else:
                     server.close()
-                
-                
-                
-                
-                
-                x = {"bob": bob.public_key}
-                c = False
             except socket.error as err:
+                #break
                 print("Connection error", err)
+                break
         try:
             server.send(json.dumps(x).encode("utf-8"))
         except socket.error as err:
@@ -119,12 +117,7 @@ def main(server, c, time_con):
             #del server
             c=True
             continue
-        total = receive(server)
-        server.close()
-        f= json.loads(total)
-        bob.generate_shared_secret(f["alice"], echo_return_key=True)
-        print(bob.shared_key)
-        c=False
+
         print("TIME")
         time.sleep(100)
 
