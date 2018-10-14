@@ -22,7 +22,7 @@ from Crypto.Cipher import AES
 
 
 bob = DiffieHellman()
-IP_address = '192.168.168.167'
+IP_address = '192.168.1.3'
 Port = 8210
 
 key = "hello1"
@@ -60,7 +60,7 @@ def receive(server):
         try:
             message = server.recv(2048)
             while message:
-                total_data+=message.decode("utf-8")
+                total_data += message.decode("utf-8")
                 message = ""
                 message = server.recv(2048)
             else:
@@ -68,14 +68,15 @@ def receive(server):
         except socket.error as ex:
             #print(ex)
             break
-    print(total_data, "<<<<")
+    #print(total_data, "<<<<")
     return total_data
     # ########################################## REC #############################################
 
 def main(server, c, time_con):
     
     
-    db = pickledb.load('/home/john/Desktop/Workspace/thesis/chat/test_client.db', False)
+    #db = pickledb.load('/home/john/Desktop/Workspace/thesis/chat/test_client.db', False)
+    db = pickledb.load(r'C:\Users\john\Desktop\workSpace\thesis\chat\test_client.db', False)
     encryp = cr_encr(return_sha256(key))
     my_challenge = id_generator(10)
     server_id = encryp.decrypt(bytes.fromhex(db.get("encr_serv")))
@@ -90,33 +91,29 @@ def main(server, c, time_con):
                 server_chap = server.recv(1024)
                 server_chap = json.loads(server_chap)
                 server_hash = {"server_hash": (hmac.new(str(time_con)[:9].encode("utf-8"),((server_id.decode("utf-8")+str(time_con)[:9]+server_chap["challenge"]).encode("utf-8"))).digest()).hex()}
-                if server_hash["server_hash"]==server_chap["hash"]:
+                if server_hash["server_hash"] == server_chap["hash"]:
                     time.sleep(1)
                     data = {"challenge":my_challenge,"hash": (hmac.new(str(time_con)[:9].encode("utf-8"),((client_id.decode("utf-8")+str(time_con)[:9]+my_challenge).encode("utf-8"))).digest()).hex()} 
                     data = json.dumps(data)
                     server.send(data.encode("utf-8"))
                     x = {"bob": bob.public_key}
-                    c = False                   
+                    server.send(json.dumps(x).encode("utf-8"))
+                    c = False
                     total = receive(server)
+                    #print(total)
                     server.close()
                     f= json.loads(total)
                     bob.generate_shared_secret(f["alice"], echo_return_key=True)
-                    print(bob.shared_key)
+                    print("SHARED KEY",bob.shared_key)
                     c=False                                        
                 else:
                     server.close()
             except socket.error as err:
                 #break
                 print("Connection error", err)
-                break
-        try:
-            server.send(json.dumps(x).encode("utf-8"))
-        except socket.error as err:
-            print(err)
-            server.close()
-            #del server
-            c=True
-            continue
+                server.close()
+                c = True
+                continue
 
         print("TIME")
         time.sleep(100)

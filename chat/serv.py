@@ -30,7 +30,7 @@ KEYFILE = os.getcwd()+'/certs/key.pem'
 CERTFILE = os.getcwd()+'/certs/cert.pem'
 
 Port = 8210
-IP_address = '192.168.168.167'
+IP_address = '192.168.1.3'
 
 key = "hello1"
 IV = 16 * b'\x00'
@@ -107,7 +107,8 @@ class client(Process):
 
 
     def chap(self):
-        db = pickledb.load('/home/john/Desktop/Workspace/thesis/chat/test.db', False)
+        #db = pickledb.load('/home/john/Desktop/Workspace/thesis/chat/test.db', False)
+        db = pickledb.load(r'C:\Users\john\Desktop\workSpace\thesis\chat\test.db', False)
         encryptor = cr_encr(return_sha256(key))
         challenge = id_generator(10)
         server_encrypt = encryptor.decrypt(bytes.fromhex(db.get("encr_pass_serv")))
