@@ -23,10 +23,9 @@ import winreg
 import os
 import psutil
 import logging
-import pickledb
 import win32evtlog # requires pywin32 pre-installed
 import urllib3
-import gc
+import signal
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 val = False
 
@@ -34,8 +33,8 @@ hKeys = []
 hKeys_run = []
 hKeys.append(winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Microsoft\\Windows NT\\CurrentVersion\\AppCompatFlags\\Compatibility Assistant\\Store"))#AYTO
 hKeys.append(winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\MuiCache"))
-hKeys.append(winreg.OpenKey(winreg.HKEY_USERS, "S-1-5-21-733142866-2450513131-3585932315-1001_Classes\\Local Settings\\Software\\Microsoft\\Windows\Shell\\MuiCache"))
-hKeys.append(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "Local Settings\Software\Microsoft\Windows\Shell\MuiCache"))
+hKeys.append(winreg.OpenKey(winreg.HKEY_USERS, "S-1-5-21-733142866-2450513131-3585932315-1001_Classes\\Local Settings\\Software\\Microsoft\\Windows\\Shell\\MuiCache"))
+hKeys.append(winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, "Local Settings\\Software\\Microsoft\\Windows\\Shell\\MuiCache"))
 
 
 hKeys_run.append(winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Run"))
@@ -49,6 +48,13 @@ no_path = []
 
 
 
+def reset_all():
+    with open("paths.json", "w") as path_file:
+        json.dump({"paths": [], "not_exist_paths": []}, path_file)
+        path_file.close()
+    with open("pids.json", "w") as pid_file:
+        json.dump({"pids": []}, pid_file)
+        pid_file.close()
 
 
 def setup_logger(logger_name, log_file, level=logging.INFO):
@@ -56,13 +62,8 @@ def setup_logger(logger_name, log_file, level=logging.INFO):
     formatter = logging.Formatter('%(asctime)s : %(message)s')
     fileHandler = logging.FileHandler(log_file, mode='a')
     fileHandler.setFormatter(formatter)
-    #streamHandler = logging.StreamHandler()
-    #streamHandler.setFormatter(formatter)
     l.setLevel(level)
     l.addHandler(fileHandler)
-    #l.addHandler(streamHandler)
-
-
 
 
 def get_stats_zip(path, matches):
@@ -242,7 +243,7 @@ def collect():
                     matches = compiled_yara.match(data=f.read())
                     f.close()
                     if matches:
-                        print("ITS A MATCHHHHH")
+                        print("ITS A MATCHHHHH",path)
 
                         base_name = os.path.basename(path)
                         for p in psutil.process_iter():
@@ -253,96 +254,59 @@ def collect():
             print(err)
             continue
 
-
-
-
-
-    #     if os.path.exists(path):
-    #         if path not in json_paths["paths"]:
-    #             json_paths["paths"].append(path)
-    #             #db.dump()
-    #
-    #             with open(path, "rb", buffering=20000) as f:
-    #                 try:
-    #                     matches = compiled_yara.match(data=f.read())
-    #                     if matches:
-    #                         print("EDOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO")
-    #                         f.close()
-    #                         get_stats_zip(path, matches)
-    #                 except Exception as err:
-    #                     print(err)
-    #                     continue
-    #         else:
-    #             pass
-    #     else:
-    #         if path not in json_paths["not_exist_paths"]:
-    #             json_paths["not_exist_paths"].append(path)
-    #     counter +=1
-    # del compiled_yara
-    # with open('paths.json', "w") as p:
-    #     json.dump(json_paths, p)
-    #     p.close()
-    # gc.collect()
-
-
 def yaramem():
-    while True:
-        with open("pids.json", "r") as js_f:
-            pids = json.load(js_f)
-            js_f.close()
-        counter = 0
-        failed = 0
-        mypid = os.getpid()
-        myppid = os.getppid()
-        virus_list = []
-        compiled_yara = yara.load("saved_yara_file.yara")
-        for myProcess in psutil.process_iter():
-            try:
-                pinfo = myProcess.as_dict(attrs=['pid', 'name', 'exe', 'cmdline', 'create_time','ppid'])
-                counter = counter + 1
+    with open("pids.json", "r") as js_f:
+        from_file_pids = json.load(js_f)
+        js_f.close()
+    try:
+        while True:
+            compiled_yara = yara.load("saved_yara_file.yara")
+            # with open("pids.json", "r") as js_f:
+            #     from_file_pids = json.load(js_f)
+            #     js_f.close()
+            counter = 0
+            failed = 0
+            mypid = os.getpid()
+            myppid = os.getppid()
 
-                if pinfo['pid'] == mypid or pinfo['ppid']==myppid:
-                    print(".............................hello")
-                    continue
-                elif pinfo['pid'] == myppid or pinfo["exe"] == "pycharm64.exe":
-                    print(".....................hello.............................")
-                    continue
-                else:
-                    write = False
-                    counter = 0
-                    for p in pids["pids"]:
-
-                        if (p["id"]!=pinfo["pid"]  or p["create_time"]!=pinfo["create_time"]):
-                            counter+=1
-                            continue
-                        elif ((p["id"]==pinfo["pid"]  and p["create_time"]==pinfo["create_time"])):
-                            break
-                    if counter == len(pids["pids"]):
-                        counter = 0
-
-                        write = False
-                        pids["pids"].append({"id":pinfo["pid"],"name":pinfo["name"],"create_time":pinfo["create_time"]})
-                        try:
-                            #print(pinfo)
-                            match = compiled_yara.match(pid=myProcess.pid)
-                            print("MESA S WRITE", myProcess)
-                            if match:
-                                print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", myProcess)
-                                #myProcess.kill()
-                                #os.kill(myProcess.)
-                                #get_stats_zip(pinfo["exe"], match)
-
-                        except Exception as e:
-                            print(e,"ccccccccc")
-                            failed = failed+1
+            for myProcess in psutil.process_iter():
+                try:
+                    pinfo = myProcess.as_dict(attrs=['pid', 'name', 'exe', 'cmdline', 'create_time','ppid'])
+                    counter = counter + 1
+                    if pinfo['pid'] == mypid:
                         continue
-            except psutil.NoSuchProcess:
-                pass
-            #time.sleep(0.5)
-        with open("pids.json","w") as js_f_w:
-            json.dump(pids,js_f_w)
-            pids["pids"].clear()
-            js_f_w.close()
+                    elif pinfo['ppid']==myppid:
+                        continue
+                    elif pinfo['pid'] == myppid:
+                        continue
+                    elif pinfo["name"] == "pycharm64.exe":
+                        continue
+                    elif pinfo["name"] == "vmware.exe":
+                        continue
+
+
+                    else:
+                        check = (pinfo["pid"],pinfo["create_time"])
+                        if check not in from_file_pids["pids"]:
+
+                            from_file_pids["pids"].append(check)
+                            match = compiled_yara.match(pid = pinfo["pid"])
+                            if match:
+                                print(pinfo['name'], "--------------",pinfo["pid"], "--------------",match)
+                                p_to_kill = psutil.Process(pinfo["pid"])
+                                os.kill(p_to_kill.parent().pid, signal.SIGTERM)
+                                os.kill(p_to_kill.pid,signal.SIGTERM)
+                                #os.kill(pinfo["pid"])
+                                memory_log.warning(f"Found malicious application name : {pinfo['name']} path : {pinfo['exe']} PID {pinfo['pid']}  ")
+                                get_stats_zip(pinfo['exe'], match)
+                        else:
+                            print("passing")
+                except Exception as err:
+                    memory_log.warning(f"Exception while scanning Process {err}  ")
+            print("END")
+            time.sleep(0.9)
+    except yara.Error as err:
+        print("ERROR", err)
 
 
 def stop_conns():
@@ -359,8 +323,11 @@ def stop_conns():
             try:
                 if i.raddr.ip in ips:
                     p = psutil.Process(i.pid)
+                    print(f"IP: {i.raddr.ip}, Port: {i.raddr.port}, Executable: {p.name()}, pid: {i.pid}, Started: {datetime.datetime.fromtimestamp(p.create_time()).strftime('%c')}")
                     connect_log.warning(f"IP: {i.raddr.ip}, Port: {i.raddr.port}, Executable: {p.name()}, pid: {i.pid}, Started: {datetime.datetime.fromtimestamp(p.create_time()).strftime('%c')}")
-                    p.kill()  # os.kill(i.pid, signal.SIGTERM)
+
+                    os.kill(p.parent().pid , signal.SIGTERM)
+                    os.kill(i.pid, signal.SIGTERM)
             except:
                 continue
 
@@ -382,8 +349,9 @@ class MISPReceiver(Process):
         self.debugon = debugon
         self.data = data
         try:
-            print("HELLO")
+
             self.misp = PyMISP(misp_url, misp_key, misp_verify_cert, 'json')
+            print("HELLO")
         except Exception as err:
             main_sys_log.error(f"Connection Failed {err}")
             print("Cannot Connect to MISP : ", err)
@@ -403,7 +371,8 @@ class MISPReceiver(Process):
             self.write_iocs(self.output_path, self.output_path_yara )
             check_yara()
             print("RUN")
-            time.sleep(2)
+            time.sleep(5)
+            reset_all()
 
     def get_some_last(self,event_element):
                 f_l=dict()
@@ -586,10 +555,10 @@ def get_data_json():
             json.dump({"id": "", "url": "", "cert": "False", "search_from": "2000-1-1", "Events": []}, file)
             main_sys_log.error("Valid Json File Has been Created Please provide proper information")
             print("Provide valid Json File") #<<<<<<<<<<<<<<<<<<<<<<<<<<<NA SVISEI
-            sys.exit(0)
+            sys.exit()
     if not os.path.isfile(path_to_pids):
         with open("pids.json", "w") as file:
-            json.dump({"pids": [{"id": "", "name": "", "create_time": ""}]},file)
+            json.dump({"pids": []},file)
             file.close()
 
     else:
@@ -602,11 +571,11 @@ def get_data_json():
             else:
                 main_sys_log.error("Please Verify the server certificate")
                 print("Please Verify the server certificate") #<<<<<<<<<<<<<<<<<<<<<<<<<<<NA SVISEI
-                sys.exit(0)
+                sys.exit()
         if len(data["id"]) != 40:
             main_sys_log.critical("Set correct an API key")
             print("Set correct an API key") #<<<<<<<<<<<<<<<<<<<<<<<<<<<NA SVISEI
-            sys.exit(0)
+            sys.exit()
         else:
             return data
 
@@ -630,26 +599,24 @@ def main(path_to_yara, path_to_ioc):
     count = 0
     try:
         data = get_data_json()
-
         misp_receiver = MISPReceiver(data, path_to_yara, path_to_ioc, misp_key=data["id"], misp_url=data["url"],misp_verify_cert=val, siem_mode=True, debugon=False)
         misp_receiver.start()
+        time.sleep(5)
         p1 = Process(target=yaramem)
-        #p2 = Process(target=stop_conns)
+        p2 = Process(target=stop_conns)
         p1.start()
-        #p2.start()
+        p2.start()
         #misp_receiver.join()
         #p1.start()
         #p1.join()
         while True:
-            time.sleep(5)
+
             if os.path.isfile("saved_yara_file.yara"):
                 try:
                     print("WATE")
-                    #yara.load("saved_yara_file.yara")
-                    #collect()
-
-
-                    #time.sleep(0.4)
+                    yara.load("saved_yara_file.yara")
+                    collect()
+                    time.sleep(0.4)
                 except Exception as err:
                     print("problem with yara : ", err)
             else:
@@ -660,7 +627,7 @@ def main(path_to_yara, path_to_ioc):
         if count != 2:
             main(path_to_yara, path_to_ioc)
         else:
-            main_sys_log.error("Tottal system fail")
+            main_sys_log.error("Total system fail")
 
 
 
@@ -691,7 +658,6 @@ if __name__ == '__main__':
         if not os.path.isfile("paths.json"):
             with open("paths.json", "w") as file:
                 json.dump({"paths": [],"not_exist_paths":[]}, file)
-
         if not os.path.exists(path_to_ioc):
             os.makedirs(path_to_ioc)
         if not os.path.exists(path_to_yara):
@@ -699,32 +665,11 @@ if __name__ == '__main__':
         if not os.path.exists(bad_files):
             os.makedirs(bad_files)
         if given_args.reset:
-            with open("pids.json", "r") as js_f:
-                pids = json.load(js_f)
-                pids['pids'].clear()
-                js_f.close()
-            with open("pids.json", "w") as js_f:
-                json.dump(pids, js_f)
-                js_f.close()
-            with open("paths_db.db", "r") as js_f:
-                paths = json.load(js_f)
-                paths["paths"].clear()
-                paths['not_exist_paths'].clear()
-                js_f.close()
-            with open("paths_db.db", "w") as js_f:
-                json.dump(paths, js_f)
-                js_f.close()
-            with open("keys.json", "r") as js_f:
-                pids = json.load(js_f)
-                pids['Events'].clear()
-                js_f.close()
-            with open("keys.json", "w") as js_f:
-                json.dump(pids, js_f)
-                js_f.close()
+            reset_all()
         if given_args.key:
             if len(given_args.key) != 40:
                 main_sys_log.critical("Set correct an API key")
-                sys.exit(0)
+                sys.exit()
             else:
                 with open("keys.json", "r") as js_f:
                     pids = json.load(js_f)
@@ -748,194 +693,7 @@ if __name__ == '__main__':
             except socket.error as err:
                 main_sys_log.error("No valid IP format")
 
+
         main(path_to_yara, path_to_ioc)
     except KeyboardInterrupt:
         print("closed")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        # def cr_encr(hex_key):
-        #     return AES.new(hex_key, mode, IV=IV)
-        #
-        #
-        # def id_generator(size, chars=string.ascii_letters + string.digits):
-        #     return ''.join(random.choice(chars) for _ in range(size))
-        #
-        #
-        # def return_sha256(string_to_hex):
-        #     return hashlib.sha256(string_to_hex.encode("utf-8")).digest()
-
-        #
-        #
-        # def connect_recv():
-        #     c = True
-        #     while True:
-        #         if c:
-        #             try:
-        #
-        #                 server = socket_cr()
-        #                 server.connect((IP_address, Port))
-        #                 server.send(pub.encode("utf-8"))
-        #                 priv_key = PKCS1_OAEP.new(RSA.import_key(cryptus.dencrypt_file("hello",
-        #                                                                                r"C:\Users\john\Desktop\workSpace\thesis\chat\pub_pr_keys\client\priv_49.enc",
-        #                                                                                TXT=True)))
-        #                 crypto_aes = priv_key.decrypt(server.recv(2048))
-        #                 encryptor = cr_encr(crypto_aes)
-        #                 del priv_key
-        #                 server.send(encryptor.encrypt("OK".encode("utf-8")))
-        #                 del encryptor
-        #                 encryptor = cr_encr(crypto_aes)
-        #                 c = False
-        #                 if encryptor.decrypt(server.recv(2048)).decode("utf-8") == "OK":
-        #                     del encryptor
-        #                     receive(server, crypto_aes)
-        #                     db = pickledb.load('example.db', False)
-        #                     db.lrem("paths")
-        #                     db.lcreate("paths")
-        #                     db.dump()
-        #                 else:
-        #                     print("NOT OK ")
-        #                 # print(AES_key.decode(""))
-        #             except socket.error as err:
-        #                 # break
-        #                 print("Connection error", err)
-        #                 server.close()
-        #                 c = True
-        #                 continue
-        #         server.close()
-        #         print("TIME")
-        #         time.sleep(3)
-        #         c = True
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        # def receive(server, key):
-        #     # ########################################## REC #############################################
-        #
-        #     while True:
-        #
-        #         try:
-        #             counter = 0
-        #             total_data = b""
-        #             message = b""
-        #             encryptor = cr_encr(return_sha256(key.decode("utf-8")))
-        #
-        #             info = encryptor.decrypt(server.recv(8192))
-        #             print(info)
-        #             del encryptor
-        #             server.settimeout(5)
-        #             message = server.recv(2097152)  # 256 KB
-        #             while message != b"":
-        #                 total_data += message
-        #                 message = b""
-        #                 message = server.recv(2097152)  # 256 KB
-        #                 counter += 1
-        #                 print(counter)
-        #             else:
-        #                 break
-        #         except socket.error as ex:
-        #             print(ex)
-        #             break
-        #     # print(total_data)
-        #     # print(total_data, "<<<<")
-        #     encryptor = cr_encr(return_sha256(key.decode("utf-8")))
-        #     x = open("saved_yara.yara", "wb")
-        #     x.write(encryptor.decrypt(total_data))
-        #     try:
-        #         f_yara = yara.load("saved_yara.yara")
-        #         print("ALL YARA SAVED")
-        #         print(f_yara)
-        #         return f_yara
-        #     except yara.Error as err:
-        #         print(err)
-        #         return
-
-
-
-
-
-        #
-        # server_chap = server.recv(1024)
-        # server_chap = json.loads(server_chap)
-        # server_hash = {"server_hash": (hmac.new(str(time_con)[:9].encode("utf-8"), (
-        #     (server_id.decode("utf-8") + str(time_con)[:9] + server_chap["challenge"]).encode(
-        #         "utf-8"))).digest()).hex()}
-        # if server_hash["server_hash"] == server_chap["hash"]:
-        #     try:
-        #         time.sleep(1)
-        #         data = {"challenge": my_challenge, "hash": (hmac.new(str(time_con)[:9].encode("utf-8"), (
-        #             (client_id.decode("utf-8") + str(time_con)[:9] + my_challenge).encode("utf-8"))).digest()).hex()}
-        #         data = json.dumps(data)
-        #         server.send(data.encode("utf-8"))
-        #         x = {"bob": bob.public_key}
-        #         server.send(json.dumps(x).encode("utf-8"))
-        #         c = False
-        #         total = receive(server)
-        #
-        #         f = json.loads(total)
-        #         bob.generate_shared_secret(f["alice"], echo_return_key=True)
-        #         print("SHARED KEY", bob.shared_key)
-        #         encryptor = cr_encr(return_sha256(bob.shared_key))
-        #         x = encryptor.decrypt(server.recv(1024))
-        #         del encryptor
-        #         try:
-        #             mess = json.loads(x.decode("utf-8"))
-        #             if mess["OK"] == "OK":
-        #                 my_mess = {"OK": "OK", "cl": id_generator(10)}
-        #                 my_mess = json.dumps(my_mess)
-        #                 encryptor = cr_encr(return_sha256(bob.shared_key))
-        #                 final_rep = encryptor.encrypt(my_mess.encode("utf-8"))
-        #                 server.send(final_rep)
-        #                 print("cccccccc", mess)
-        #
-        #         except Exception as ex:
-        #             print(ex)
-        #             server.close()
-        #         c = False
-        #     except Exception as erro:
-        #         print(erro)
-        #         server.close()
-        #         c = True
-        # else:
-        #     server.close()
-        #     c = True
-
-
-# def socket_cr():
-#     try:
-#         server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#         server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-#         server.settimeout(3)
-#         return server
-#     except socket.error as err :
-#         print ("Socket Error :", err)
-#     # ########################################## REC #############################################
-# # pub = cryptus.dencrypt_file("hello","C:\Users\john\Desktop\workSpace\thesis\chat\pub_pr_keys\client",TXT=True)
-# pub = open(r"C:\Users\john\Desktop\workSpace\thesis\chat\pub_pr_keys\client\pub_49", "r")
-# pub = pub.read()
-# print(pub)
